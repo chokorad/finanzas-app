@@ -61,7 +61,7 @@ function estadoCup(c, hoy) {
 }
 
 // ---------- estado ----------
-const VERSION = 'v21 · 12 nov 2026'; // súbela junto con CACHE en sw.js en cada cambio
+const VERSION = 'v22 · 16 nov 2026'; // súbela junto con CACHE en sw.js en cada cambio
 const elVer = document.getElementById('ver'); if (elVer) elVer.textContent = 'Finanzas ' + VERSION;
 const S = { pagos: [], rend: [], cup: [], cobrar: [], jarras: [], metas: [], recur: [], cancelar: [] };
 const cargado = { pagos: false, rend: false };
@@ -166,9 +166,9 @@ function vistaHoyLista(lista, hoy) {
     if (u.tipo === 'cup') return `<div class="card ${claseNivel(u.nivel)}"><div class="fila"><div><div class="t">${esBeneficio(u.c) ? icoBen(u.c) : '🎟'} ${esc(u.c.nombre)}</div>
       <span class="tag ${u.nivel === 0 ? 'rojo' : 'amb'}">${u.e.dd === 0 ? (esBeneficio(u.c) ? 'renueva HOY' : 'vence HOY') : (esBeneficio(u.c) ? 'renueva en ' : 'vence en ') + u.e.dd + ' d'}</span> <small>${esc(u.c.codigo || '')}</small></div>
       <div class="acciones">${esBeneficio(u.c) ? `<button data-act="cup-editar" data-id="${u.c.id}">Ya renové / editar</button>` : `<button data-act="cup-usado" data-id="${u.c.id}">Usado</button>`}</div></div></div>`;
-    return `<div class="card amb"><div class="fila"><div><div class="t">💵 ${esc(u.x.concepto)}</div>
+    return `<div class="card amb"><div class="fila"><div><div class="t">${u.x.clase === 'accion' ? '📝' : '💵'} ${esc(u.x.concepto)}</div>
       <small>${esc(u.x.deQuien || '')} ${u.x.monto ? '· ' + MXN(u.x.monto) : ''}</small><br><span class="tag amb">${u.x.porDefinir ? 'por definir' : u.dias + ' días abierto'}</span></div>
-      <div class="acciones"><button class="sec" data-act="cob-editar" data-id="${u.x.id}">Abrir</button><button data-act="cob-cobrado" data-id="${u.x.id}">Cobrado</button></div></div></div>`;
+      <div class="acciones"><button class="sec" data-act="cob-editar" data-id="${u.x.id}">Abrir</button><button class="sec chico" data-act="cob-mover" data-id="${u.x.id}">↪</button><button data-act="cob-cobrado" data-id="${u.x.id}">${u.x.clase === 'accion' ? 'Hecho' : 'Cobrado'}</button></div></div></div>`;
   }).join('');
 }
 
@@ -230,11 +230,11 @@ function cancelarHtml(hoy) {
     <div class="barra"><button class="sec" data-act="canc-nuevo">＋ Suscripción de prueba</button></div>
     ${pend.map(card).join('') || '<div class="vacio">Membresías que debes cancelar antes de que te cobren (pruebas gratis, "cancela antes del 5"…).</div>'}${hist}</details>`;
 }
-function formCancelar(x) {
+function formCancelar(x, origen) {
   const nuevo = !x;
   formulario({
-    titulo: nuevo ? 'Cancelar a tiempo' : 'Editar',
-    valores: x || {},
+    titulo: nuevo ? (origen ? '↪ Mover a Cancelar a tiempo' : 'Cancelar a tiempo') : 'Editar',
+    valores: x || (origen ? { nombre: origen.concepto, monto: origen.monto ?? '', nota: notaDe(origen) } : {}),
     campos: [
       { k: 'nombre', label: 'Qué membresía o suscripción es', ph: 'Fabletics VIP, prueba de…' },
       { k: 'limite', label: 'Cancela ANTES de (último día)', type: 'date' },
@@ -244,8 +244,8 @@ function formCancelar(x) {
     ],
     onSave: async d => {
       if (!d.nombre || !d.limite) return toast('Pon el nombre y la fecha límite');
-      if (nuevo) await addDoc(ref('cancelar'), { ...d, estado: 'activa' }); else await updateDoc(ref('cancelar', x.id), d);
-      cerrar();
+      if (nuevo) { await addDoc(ref('cancelar'), { ...d, estado: 'activa' }); if (origen) await deleteDoc(ref('cobrar', origen.id)); } else await updateDoc(ref('cancelar', x.id), d);
+      cerrar(); if (origen) toast('Movido a Cancelar a tiempo (Pagos)');
     },
     onDelete: nuevo ? null : () => deleteDoc(ref('cancelar', x.id)),
   });
@@ -270,11 +270,11 @@ function recurrentesHtml() {
     ${rec.length ? `<div class="cal" style="text-align:center"><small class="mute">Lo que se va solo cada mes</small><div style="font-size:1.6rem;font-weight:800">${MXN(Math.round(mes))}</div><small>${MXN(Math.round(mes * 12))} al año · revisa cuáles ya no usas</small></div>` : ''}
     <div class="barra"><button class="sec" data-act="rec-nuevo">＋ Recurrente</button></div>${filas}${vacio}</details>`;
 }
-function formRecurrente(r) {
+function formRecurrente(r, origen) {
   const nuevo = !r;
   formulario({
-    titulo: nuevo ? 'Nuevo pago recurrente' : 'Editar recurrente',
-    valores: r || { frecuencia: 'mensual', categoria: 'suscripcion' },
+    titulo: nuevo ? (origen ? '↪ Mover a Pagos recurrentes' : 'Nuevo pago recurrente') : 'Editar recurrente',
+    valores: r || { frecuencia: 'mensual', categoria: 'suscripcion', ...(origen ? { nombre: origen.concepto, monto: origen.monto ?? '', nota: notaDe(origen) } : {}) },
     campos: [
       { k: 'nombre', label: 'Nombre', ph: 'Seguro, Netflix, Spotify…' },
       { k: 'monto', label: 'Monto ($) por cobro', type: 'number' },
@@ -285,8 +285,8 @@ function formRecurrente(r) {
     ],
     onSave: async d => {
       if (!d.nombre) return toast('Ponle nombre');
-      if (nuevo) await addDoc(ref('recur'), { ...d, activo: true, confirmar: false }); else await updateDoc(ref('recur', r.id), d);
-      cerrar();
+      if (nuevo) { await addDoc(ref('recur'), { ...d, activo: true, confirmar: false }); if (origen) await deleteDoc(ref('cobrar', origen.id)); } else await updateDoc(ref('recur', r.id), d);
+      cerrar(); if (origen) toast('Movido a Pagos recurrentes (Pagos)');
     },
     onDelete: nuevo ? null : () => deleteDoc(ref('recur', r.id)),
   });
@@ -505,20 +505,20 @@ async function sembrarBeneficios() {
 function vistaCobrar(hoy) {
   const ord = S.cobrar.slice().sort((a, b) => ((a.estatus === 'cobrado') - (b.estatus === 'cobrado')) || (!!b.porDefinir - !!a.porDefinir) || String(a.desde).localeCompare(String(b.desde)));
   const abiertos = ord.filter(x => x.estatus !== 'cobrado');
-  const total = abiertos.reduce((s, x) => s + (Number(x.monto) || 0), 0);
+  const total = abiertos.filter(x => x.clase !== 'accion').reduce((s, x) => s + (Number(x.monto) || 0), 0);
   const filas = ord.map(x => {
     const cob = x.estatus === 'cobrado', dias = diffDays(hoy, parse(x.desde || ymd(hoy)));
     return `<div class="card ${cob ? 'gris' : dias >= 7 ? 'amb' : ''}"><div class="fila"><div>
-      <div class="t">💵 ${esc(x.concepto)}</div>
+      <div class="t">${x.clase === 'accion' ? '📝' : '💵'} ${esc(x.concepto)}</div>
       <small>${esc(x.deQuien || '')} ${x.monto ? '· ' + MXN(x.monto) : ''}</small><br>
-      ${cob ? '<span class="tag ok">cobrado</span>' : x.porDefinir ? '<span class="tag amb">por definir</span>' : `<span class="tag ${dias >= 7 ? 'amb' : ''}">${dias} d abierto</span>`}
+      ${cob ? `<span class="tag ok">${x.clase === 'accion' ? 'hecho' : 'cobrado'}</span>` : x.porDefinir ? '<span class="tag amb">por definir</span>' : `<span class="tag ${dias >= 7 ? 'amb' : ''}">${dias} d abierto</span>`}
       ${(x.archivos || []).length ? `<span class="tag">📎 ${x.archivos.length}</span>` : ''}
       ${x.nota ? `<div class="nota">${esc(x.nota)}</div>` : ''}</div>
-      <div class="acciones">${cob ? '' : `<button data-act="cob-cobrado" data-id="${x.id}">Cobrado</button>`}<button class="sec chico" data-act="cob-editar" data-id="${x.id}">✎</button></div></div></div>`;
+      <div class="acciones">${cob ? '' : `<button data-act="cob-cobrado" data-id="${x.id}">${x.clase === 'accion' ? 'Hecho' : 'Cobrado'}</button><button class="sec chico" data-act="cob-mover" data-id="${x.id}">↪</button>`}<button class="sec chico" data-act="cob-editar" data-id="${x.id}">✎</button></div></div></div>`;
   }).join('');
   return `<div class="barra"><button data-act="cob-rapida">🎤 Nota rápida</button><button class="sec" data-act="cob-nuevo">＋ Nuevo</button></div>`
     + (abiertos.length ? `<p class="mute">Abiertos: <b>${abiertos.length}</b> · ${MXN(total)}</p>` : '')
-    + (filas || '<div class="vacio">Nada por cobrar. Aquí van reembolsos, cosas que compraste para vender, etc.</div>');
+    + (filas || '<div class="vacio">Nada pendiente. Aquí van reembolsos, cosas por vender y pendientes por hacer; con ↪ los mandas a su lugar (cancelar a tiempo, recurrentes, beneficios).</div>');
 }
 
 // ---------- estados de cuenta: revisar 2 días después del corte (si cae en fin de semana, el viernes anterior) ----------
@@ -696,11 +696,11 @@ function formRend(r) {
   });
 }
 
-function formCup(c) {
+function formCup(c, origen) {
   const nuevo = !c;
   formulario({
-    titulo: nuevo ? 'Nuevo beneficio o cupón' : 'Editar',
-    valores: c || { tipo: 'cupon' },
+    titulo: nuevo ? (origen ? '↪ Mover a Beneficios' : 'Nuevo beneficio o cupón') : 'Editar',
+    valores: c || (origen ? { tipo: 'otro', nombre: origen.concepto, resumen: notaDe(origen) } : { tipo: 'cupon' }),
     campos: [
       { k: 'tipo', label: 'Tipo', type: 'select', opts: TIPOS_BEN },
       { k: 'nombre', label: 'Qué es', ph: 'Seguro de viajero, pase TAG, cupón Walmart…' },
@@ -721,8 +721,8 @@ function formCup(c) {
       d.gastado = d.gastado || 0; d.veces = d.veces || 0;
       if (d.link && !/^https?:\/\//i.test(d.link)) d.link = 'https://' + d.link;
       if (!nuevo) d.porDefinir = false;
-      if (nuevo) await addDoc(ref('cup'), { ...d, usado: false, porActivar: !!d.meta }); else await updateDoc(ref('cup', c.id), d);
-      cerrar();
+      if (nuevo) { await addDoc(ref('cup'), { ...d, usado: false, porActivar: !!d.meta }); if (origen) await deleteDoc(ref('cobrar', origen.id)); } else await updateDoc(ref('cup', c.id), d);
+      cerrar(); if (origen) toast('Movido a Beneficios');
     },
     onDelete: nuevo ? null : () => deleteDoc(ref('cup', c.id)),
   });
@@ -761,13 +761,32 @@ function notaRapida(clase) {   // paso 2: dictar o escribir
   });
   setTimeout(() => { const el = $('#f_concepto'); if (el) el.focus(); }, 100);
 }
+// texto de la nota + links de sus archivos (al mover, los archivos siguen en Drive y su link se conserva aquí)
+const notaDe = x => [x.nota, ...(x.archivos || []).map(f => '📎 ' + f.nombre + ': ' + f.link)].filter(Boolean).join('\n');
+function moverPendiente(x) {
+  if (!x) return;
+  const h = $('#hoja'), acc = x.clase === 'accion';
+  h.innerHTML = `<h3>↪ ¿Dónde va "${esc(x.concepto)}"?</h3>
+    <div class="botones" style="flex-direction:column;gap:10px">
+      <button class="sec" id="mv-canc" style="padding:14px">✂️ Cancelar a tiempo<br><small>una membresía o prueba que debo cancelar antes de una fecha (Pagos)</small></button>
+      <button class="sec" id="mv-rec" style="padding:14px">🔁 Pago recurrente<br><small>algo que se cobra cada mes o cada año (Pagos)</small></button>
+      <button class="sec" id="mv-ben" style="padding:14px">🎁 Beneficio<br><small>seguro, promo, descuento o membresía que tengo (Beneficios)</small></button>
+      <button class="sec" id="mv-tipo" style="padding:14px">${acc ? '💵 Es un cobro o reembolso' : '📝 Es una acción pendiente (no es un cobro)'}<br><small>${acc ? 'vuelve a contarse como dinero por cobrar' : 'se queda aquí pero con botón "Hecho" y sin monto por cobrar'}</small></button>
+    </div><div class="botones"><button class="sec" id="f-cancel">Cerrar</button></div>`;
+  $('#modal').hidden = false;
+  $('#f-cancel').onclick = cerrar;
+  $('#mv-canc').onclick = () => formCancelar(null, x);
+  $('#mv-rec').onclick = () => formRecurrente(null, x);
+  $('#mv-ben').onclick = () => formCup(null, x);
+  $('#mv-tipo').onclick = async () => { await updateDoc(ref('cobrar', x.id), { clase: acc ? 'cobro' : 'accion', porDefinir: false }); cerrar(); toast(acc ? 'Ahora es un cobro' : 'Ahora es una acción pendiente'); };
+}
 function formCobrar(x, aviso) {
   const nuevo = !x;
   const listaArchivos = a => (a || []).map((f, i) => `<div class="archivo"><a href="${esc(f.link)}" target="_blank" rel="noopener">📎 ${esc(f.nombre)}</a>
       <button class="sec chico" data-quitar="${i}">✕</button></div>`).join('') || '<small>Sin archivos.</small>';
   const driveListo = () => driveToken && Date.now() < driveExp;
   const extra = nuevo ? '<p class="mute"><small>Guarda primero y luego podrás subir recibos, capturas o PDFs.</small></p>'
-    : `<label>Archivos (se guardan en tu Google Drive)</label><div id="lista-arch">${listaArchivos(x.archivos)}</div>
+    : `<div class="botones"><button class="sec" id="btn-mover">↪ Mover a otro lugar (cancelar, recurrente, beneficio…)</button></div><label>Archivos (se guardan en tu Google Drive)</label><div id="lista-arch">${listaArchivos(x.archivos)}</div>
        <div class="botones"><button class="sec" id="btn-drive">${driveListo() ? '＋ Subir archivo' : 'Conectar Drive'}</button></div>
        <input type="file" id="file-in" multiple accept="image/*,application/pdf" hidden><small id="arch-msg" class="mute"></small>`;
   formulario({
@@ -790,6 +809,7 @@ function formCobrar(x, aviso) {
     },
     onDelete: nuevo ? null : () => deleteDoc(ref('cobrar', x.id)),
     onExtra: nuevo ? null : () => {
+      $('#btn-mover').onclick = () => moverPendiente(x);
       const msg = t => { $('#arch-msg').textContent = t; };
       $('#btn-drive').onclick = async () => {
         if (!driveListo()) {
@@ -980,7 +1000,8 @@ document.addEventListener('click', async e => {
       await updateDoc(ref('pagos', id), { estados: arrayRemove(mk) }); return toast('Revisión deshecha');
     }
     if (act === 'cob-editar') return formCobrar(byId('cobrar', id));
-    if (act === 'cob-cobrado') { await updateDoc(ref('cobrar', id), { estatus: 'cobrado', cobradoFecha: ymd(hoy) }); return toast('¡Cobrado!'); }
+    if (act === 'cob-mover') return moverPendiente(byId('cobrar', id));
+    if (act === 'cob-cobrado') { await updateDoc(ref('cobrar', id), { estatus: 'cobrado', cobradoFecha: ymd(hoy) }); return toast(byId('cobrar', id)?.clase === 'accion' ? '¡Hecho!' : '¡Cobrado!'); }
   } catch (err) { console.error(err); toast('Error: ' + (err.code || err.message)); }
 });
 

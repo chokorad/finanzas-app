@@ -187,13 +187,13 @@ export function armarAviso({ pagos = [], rend = [], cup = [], cobrar = [], cance
   }
   if (slot === 'am') {
     for (const x of cobrar.filter(x => x.estatus !== 'cobrado' && x.porDefinir)) {
-      items.push({ n: 1, orden: 79, sec: 'Por definir (nota rápida)', t: `${esc(x.concepto)} — falta definir cómo cobrarlo/venderlo` });
+      items.push({ n: 1, orden: 79, sec: 'Por definir (nota rápida)', t: `${esc(x.concepto)} — falta definir qué hacer con esto (cobrarlo, venderlo, cancelarlo…)` });
     }
     const ab = cobrar.filter(x => x.estatus !== 'cobrado' && !x.porDefinir)
       .map(x => ({ x, dias: diffDays(hoy, parse(x.desde || ymd(hoy))) })).filter(o => o.dias >= 7)
       .sort((a, b) => b.dias - a.dias).slice(0, 10);
     for (const { x, dias } of ab) {
-      items.push({ n: 1, orden: 90 - dias, sec: 'Por cobrar (más de 7 días abierto)', t: `${esc(x.concepto)}${x.deQuien ? ' — ' + esc(x.deQuien) : ''}${x.monto ? ' · ' + MXN(x.monto) : ''} · ${dias} días${x.nota ? '<br><i style="color:#666">' + esc(String(x.nota).slice(0, 160)) + '</i>' : ''}` });
+      items.push({ n: 1, orden: 90 - dias, sec: x.clase === 'accion' ? 'Pendientes por hacer (más de 7 días abierto)' : 'Por cobrar (más de 7 días abierto)', t: `${esc(x.concepto)}${x.deQuien ? ' — ' + esc(x.deQuien) : ''}${x.monto ? ' · ' + MXN(x.monto) : ''} · ${dias} días${x.nota ? '<br><i style="color:#666">' + esc(String(x.nota).slice(0, 160)) + '</i>' : ''}` });
     }
   }
   for (const x of cancelar.filter(pendienteCancelar)) {

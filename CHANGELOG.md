@@ -1,3 +1,6 @@
+## v22 (16 nov 2026)
+- Pestana "Por cobrar" pasa a **Pendientes**: boton ↪ en cada nota para mandarla a su lugar (Cancelar a tiempo, Pago recurrente, Beneficio) o marcarla como accion ("Hecho", sin monto por cobrar; campo `clase`: cobro|accion en finanzas_cobrar). Al mover, se crea en el destino con los datos precargados y se borra del pendiente (los links de archivos pasan a la nota).
+
 ## v21 (12 nov 2026)
 - Nota rapida (🎤): primero se elige Recordatorio (como antes, va a Por cobrar "por definir") o Beneficio (va a Beneficios como "por completar"; al editarlo se quita la marca).
 
